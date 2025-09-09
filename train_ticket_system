@@ -1,0 +1,126 @@
+from random import randint
+import mysql.connector as m
+
+d = m.connect(host="localhost",user ="root",password="root",database="train")
+cursor = d.cursor()
+
+def menu():
+    while True:
+        print("================welcome to train ticket booking system================")
+        print("1.to exit application")
+        print("2.to check train details")
+        print("3.to book ticket")
+        choice = int(input("enter your choice:"))
+        if choice == 1:
+            print("thank you,may your have a safe journey")
+            break
+        elif choice == 2:
+            show_train_details()
+        elif choice == 3:
+            book_ticket()
+        else:
+            print("invalid choice,try again")
+
+def show_train_details():
+    cursor.execute("select * from trains")
+    trains = cursor.fetchall()
+    for train in trains:
+        print(f"train no:{train[0]},train name:{train[1]},source:{train[2]},destination:{train[3]}")
+
+
+def book_ticket():
+    boarding = input("Enter your Boarding Station (code): ").upper()
+    destination = input("Enter your Destination Station (code): ").upper()
+
+    # Check available trains
+    cursor.execute(
+        "SELECT train_id, train_no, name FROM trains WHERE source=%s OR destination=%s",
+        (boarding, destination)
+    )
+    trains = cursor.fetchall()
+
+    if not trains:
+        print("\nNo trains available for your route.")
+        return
+
+    print("\nTrains available for your journey:")
+    for t in trains:
+        print(f"Train ID: {t[0]} | Train No: {t[1]} | {t[2]}")
+
+    train_id = int(input("\nEnter Train ID you want to travel in: "))
+
+    # Show available seats
+    available_seats = show_seats(train_id, boarding)
+    if not available_seats:
+        print("No seats available in this train.")
+        return
+
+    n = int(input("\nHow many tickets do you want to book? "))
+    bookings = []
+
+    for _ in range(n):
+        name = input("\nEnter Passenger Name: ")
+        seat_no = int(input("Enter Seat Number: "))
+
+        # Check if seat is free
+        cursor.execute(
+            "SELECT booked FROM seats WHERE train_id=%s AND seat_no=%s",
+            (train_id, seat_no)
+        )
+        result = cursor.fetchone()
+
+        if not result or result[0] == 1:
+            print("!! ERROR: Seat already booked or invalid !!")
+            return
+
+        passenger_id = randint(1000000, 9999999)
+        bookings.append((name, passenger_id, train_id, seat_no, boarding, destination))
+
+    confirm_booking(bookings)
+
+
+# -----------------------------
+# Show Available Seats
+# -----------------------------
+def show_seats(train_id, boarding):
+    cursor.execute(
+        "SELECT seat_no, type, booked FROM seats WHERE train_id=%s",
+        (train_id,)
+    )
+    seats = cursor.fetchall()
+
+    available = []
+    print("\nAvailable Seats:")
+    for s in seats:
+        if s[2] == 0:  # booked = 0 → free seat
+            print(f"Seat {s[0]} | Type: {s[1]}")
+            available.append(s[0])
+
+    return available
+def confirm_booking(bookings):
+    for b in bookings:
+        # Insert into passengers
+        cursor.execute(
+            "INSERT INTO passengers (name, passenger_id, train_id, seat, boarding_point, destination) "
+            "VALUES (%s, %s, %s, %s, %s, %s)",
+            (b[0], b[1], b[2], b[3], b[4], b[5])
+        )
+
+        # Update seat as booked
+        cursor.execute(
+            "UPDATE seats SET booked=1, boarding_point=%s, destination=%s WHERE train_id=%s AND seat_no=%s",
+            (b[4], b[5], b[2], b[3])
+        )
+
+        db.commit()
+
+        print(f"\nTicket Booked ✅")
+        print(f"Passenger: {b[0]} | Passenger ID: {b[1]}")
+        print(f"Train ID: {b[2]} | Seat No: {b[3]} | {b[4]} → {b[5]}")
+
+    print("\nAll bookings completed!")
+if __name__ == "__main__":
+    try:
+        menu()
+    except Exception as e:
+        print("⚠️ Something went wrong:", e)
